@@ -47,7 +47,8 @@ pico_enable_stdio_usb(open_sesame 1)
 
 # Add the standard library to the build
 target_link_libraries(open_sesame
-        pico_stdlib)
+        pico_stdlib
+        hardware_adc)
 
 # Add the standard include files to the build
 target_include_directories(open_sesame PRIVATE
