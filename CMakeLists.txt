@@ -23,7 +23,7 @@ if (EXISTS ${picoVscode})
     include(${picoVscode})
 endif()
 # ====================================================================================
-set(PICO_BOARD pico2 CACHE STRING "Board type")
+set(PICO_BOARD pico2_w CACHE STRING "Board type")
 
 # Pull in Raspberry Pi Pico SDK (must be before project)
 include(pico_sdk_import.cmake)
@@ -48,7 +48,16 @@ pico_enable_stdio_usb(open_sesame 1)
 # Add the standard library to the build
 target_link_libraries(open_sesame
         pico_stdlib
-        hardware_adc)
+        hardware_adc
+        pico_cyw43_arch_lwip_threadsafe_background)
+
+if(NOT WIFI_SSID OR NOT WIFI_PASSWORD)
+    message(FATAL_ERROR "WIFI_SSID or WIFI_PASSWORD is undefined.")
+endif()
+
+target_compile_definitions(open_sesame PRIVATE
+        WIFI_SSID=\"${WIFI_SSID}\"
+        WIFI_PASSWORD=\"${WIFI_PASSWORD}\")
 
 # Add the standard include files to the build
 target_include_directories(open_sesame PRIVATE
