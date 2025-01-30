@@ -20,8 +20,8 @@ volatile uint16_t sample_index = 0;
 void print_samples(uint16_t num_elements) {
 	fflush(stdout);
     for (int i = 0; i < num_elements; i++) {
-        /* Convert 12 bits integer into float for test */
-        printf("%f ", ((float)sample_tab[i] * 2.0f) / 4095.0f - 1.0f);
+        /* Convert 12 bits int to float, compensates for the 1.25v offset of the microphone */
+        printf("%f ", (float)sample_tab[i] * 2.0f * 3.3f / (2.5f * 4095.0f) - 1.25f);
     }
     printf("\n");
 }
