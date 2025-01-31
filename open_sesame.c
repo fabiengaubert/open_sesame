@@ -3,6 +3,8 @@
 #include "hardware/adc.h"
 #include "pico/cyw43_arch.h"
 
+#include "ws_client.h"
+
 #define SAMPLE_FREQUENCY 16000
 #define RECORDING_TIME_S 3
 /* TIMER_US ~= 1 / SAMPLE_FREQUENCY */
@@ -43,9 +45,9 @@ bool wifi_connect(void) {
         printf("Failed to connect.\n");
         return false;
     }
-    printf("Connected.\n");
+    printf("WiFi is connected.\n");
     uint8_t *ip_address = (uint8_t*)&(cyw43_state.netif[0].ip_addr.addr);
-    printf("IP address %d.%d.%d.%d\n", ip_address[0], ip_address[1], ip_address[2], ip_address[3]);
+    printf("Raspberry IP address is %d.%d.%d.%d\n", ip_address[0], ip_address[1], ip_address[2], ip_address[3]);
     return true;
 }
 
@@ -92,8 +94,13 @@ int main()
     ret = timer_init(TIMER_PERIOD_US);
     hard_assert(ret == true);
 
+    sleep_ms(5000);
+    run_ws_client_test(SERVER_IP, 443);
+
     while (true) {
     }
 
+    /* Always call from the same core than cyw43_arch_init() */
+    cyw43_arch_deinit();
     return 0;
 }

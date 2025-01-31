@@ -35,7 +35,9 @@ pico_sdk_init()
 
 # Add executable. Default name is the project name, version 0.1
 
-add_executable(open_sesame open_sesame.c )
+add_executable(open_sesame
+        open_sesame.c
+        ws_client.c)
 
 pico_set_program_name(open_sesame "open_sesame")
 pico_set_program_version(open_sesame "0.1")
@@ -55,9 +57,17 @@ if(NOT WIFI_SSID OR NOT WIFI_PASSWORD)
     message(FATAL_ERROR "WIFI_SSID or WIFI_PASSWORD is undefined.")
 endif()
 
+if(NOT SERVER_IP)
+    message(FATAL_ERROR "SERVER_IP is undefined")
+endif()
+
 target_compile_definitions(open_sesame PRIVATE
         WIFI_SSID=\"${WIFI_SSID}\"
-        WIFI_PASSWORD=\"${WIFI_PASSWORD}\")
+        WIFI_PASSWORD=\"${WIFI_PASSWORD}\"
+        SERVER_IP=\"${SERVER_IP}\")
+
+# All warnings as errors
+add_compile_options(-Werror)
 
 # Add the standard include files to the build
 target_include_directories(open_sesame PRIVATE
