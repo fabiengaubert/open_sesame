@@ -69,7 +69,7 @@ bool timer_callback(struct repeating_timer *t) {
         led_set(led_state);
 
         /* Print the 20 first values for test */
-        print_samples(20);
+        //print_samples(20);
     }
 
     return true;
@@ -95,7 +95,7 @@ int main()
     hard_assert(ret == true);
 
     sleep_ms(5000);
-    run_ws_client_test(SERVER_IP, 443);
+    run_ws_client_test(SERVER_IP, 80);
 
     while (true) {
     }
