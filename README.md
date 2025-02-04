@@ -7,6 +7,6 @@ open sesame is an ongoing Raspberry Pico 2W project aiming at hacking an interco
 ```bash
 mkdir build
 cd build
-cmake -DWIFI_SSID=YOUR_SSID_NAME -DWIFI_PASSWORD=YOUR_PASSWORD ..
+cmake -DWIFI_SSID=YOUR_SSID_NAME -DWIFI_PASSWORD=YOUR_PASSWORD -DSERVER_IP=IP_OF_THE_SERVER ..
 make
 ```
