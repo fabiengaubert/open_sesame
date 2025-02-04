@@ -8,6 +8,7 @@
 typedef enum ws_state_t {
     WS_DISCONNECTED,
     WS_CONNECTING,
+    WS_HANDSHAKING,
     WS_CONNECTED
 } ws_state_t;
 
@@ -98,7 +99,7 @@ static err_t ws_client_connected(void *arg, struct tcp_pcb *pcb, err_t err) {
 
     ws_client_send_handshake(client);
     printf("The connection is established. Sending WebSocket handshake.\n");
-    client->state = WS_CONNECTED;
+    client->state = WS_HANDSHAKING;
     return ERR_OK;
 }
 
@@ -122,18 +123,17 @@ err_t ws_client_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err) 
         return err;
     }
 
-    if (client->state == WS_CONNECTING) {
+    if (client->state == WS_HANDSHAKING) {
         char *upgrade_string = strstr(p->payload, "Upgrade: websocket");
         if (upgrade_string != NULL) {
             client->state = WS_CONNECTED;
             printf("Handshake accepted.\n");
         }
     }
-    else {
-        /* Print packet */
-        for (struct pbuf *q = p; q != NULL; q = q->next) {
-            printf("%.*s\n", q->len, (const char*)q->payload);
-        }
+
+    /* Print packet */
+    for (struct pbuf *q = p; q != NULL; q = q->next) {
+        printf("%.*s\n", q->len, (const char*)q->payload);
     }
 
     tcp_recved(pcb, p->tot_len);
@@ -165,10 +165,11 @@ static bool ws_client_open(ws_client_t *client) {
     cyw43_arch_lwip_end();
 
     if (err != ERR_OK) {
-        printf("Error starting the connection.\n");
+        printf("Error starting the connection: %d.\n", err);
         ws_client_close(client);
         return false;
     }
+    client->state = WS_CONNECTING;
 
     return true;
 }
@@ -180,15 +181,14 @@ static ws_client_t* ws_client_init(const char *server_ip, const uint16_t server_
         printf("Error allocating client context.\n");
         return NULL;
     }
+    client->state = WS_DISCONNECTED;
 
     if(!ip4addr_aton(server_ip, &client->server_ip)) {
         printf("Server IP address is incorrect.\n");
-        client->state = WS_DISCONNECTED;
         return NULL;
     }
 
     client->server_port = server_port;
-    client->state = WS_CONNECTING;
     return client;
 }
 
