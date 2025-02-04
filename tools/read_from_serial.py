@@ -5,7 +5,7 @@
 import serial
 
 # Serial connection configuration
-port = "/dev/cu.usbmodem101"
+port = "/dev/cu.usbmodem1101"
 baudrate = 115200
 
 serial_connection = serial.Serial(port, baudrate)
