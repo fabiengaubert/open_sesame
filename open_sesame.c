@@ -79,6 +79,19 @@ bool timer_init(int64_t delay) {
     return add_repeating_timer_us(delay, timer_callback, NULL, &timer);
 }
 
+void ws_client_start(const char *server_ip, const uint16_t server_port) {
+    struct ws_client* client = ws_client_init(server_ip, server_port);
+    if (!client) {
+        return;
+    }
+
+    if (!ws_client_open(client)) {
+        printf("Error, could not open the TCP connection.\n");
+        ws_client_close(client);
+        return;
+    }
+}
+
 int main()
 {
     bool ret = stdio_init_all();
@@ -95,7 +108,8 @@ int main()
     hard_assert(ret == true);
 
     sleep_ms(5000);
-    run_ws_client_test(SERVER_IP, 80);
+    printf("Start client.\n");
+    ws_client_start(SERVER_IP, 80);
 
     while (true) {
     }

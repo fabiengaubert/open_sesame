@@ -12,24 +12,16 @@ typedef enum ws_state_t {
     WS_CONNECTED
 } ws_state_t;
 
-typedef struct ws_client_t {
+struct ws_client {
     struct tcp_pcb *pcb;
     ip_addr_t server_ip;
     uint16_t server_port;
     uint8_t send_buffer[BUF_SIZE];
     int send_buffer_len;
     ws_state_t state;
-} ws_client_t;
+};
 
-static bool ws_client_open(ws_client_t *client);
-static err_t ws_client_close(ws_client_t *client);
-static err_t ws_client_sent(void *arg, struct tcp_pcb *pcb, u16_t len);
-static err_t ws_client_connected(void *arg, struct tcp_pcb *pcb, err_t err);
-static err_t ws_client_poll(void *arg, struct tcp_pcb *pcb);
-static void ws_client_err(void *arg, err_t err);
-err_t ws_client_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err);
-
-static err_t ws_client_close(ws_client_t* client) {
+err_t ws_client_close(struct ws_client* client) {
     if (!client) {
         printf("Client is already closed.\n");
         return ERR_ARG;
@@ -56,13 +48,13 @@ static err_t ws_client_close(ws_client_t* client) {
 }
 
 static err_t ws_client_sent(void *arg, struct tcp_pcb *pcb, u16_t len) {
-    ws_client_t *client = (ws_client_t*)arg;
+    struct ws_client *client = (struct ws_client*)arg;
     printf("Client sent: %u\n", len);
 
     return ERR_OK;
 }
 
-static err_t ws_client_send_handshake(struct ws_client_t *client) {
+static err_t ws_client_send_handshake(struct ws_client *client) {
 
     /* HTTP GET request to upgrade to websocket */
     client->send_buffer_len = sprintf((char*)client->send_buffer,
@@ -90,7 +82,7 @@ static err_t ws_client_send_handshake(struct ws_client_t *client) {
 }
 
 static err_t ws_client_connected(void *arg, struct tcp_pcb *pcb, err_t err) {
-    ws_client_t *client = (ws_client_t*)arg;
+    struct ws_client *client = (struct ws_client*)arg;
     if (err != ERR_OK) {
         printf("Connection failed %d\n", err);
         ws_client_close(client);
@@ -109,14 +101,14 @@ static err_t ws_client_poll(void *arg, struct tcp_pcb *pcb) {
 }
 
 static void ws_client_err(void *arg, err_t err) {
-    ws_client_t *client = (ws_client_t*) arg;
+    struct ws_client *client = (struct ws_client*) arg;
     ws_client_close(client);
     printf("Client error: %d\n", err);
 }
 
 err_t ws_client_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err) {
     printf("Incoming packet.\r\n");
-    ws_client_t *client = (ws_client_t*)arg;
+    struct ws_client *client = (struct ws_client*)arg;
     if (!p) {
         printf("Connection closed by the server.\n");
         ws_client_close(client);
@@ -142,7 +134,7 @@ err_t ws_client_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err) 
     return ERR_OK;
 }
 
-static bool ws_client_open(ws_client_t *client) {
+bool ws_client_open(struct ws_client *client) {
     printf("Connecting to server... \n");
     printf("IP: %s port: %u\n", ip4addr_ntoa(&client->server_ip), client->server_port);
 
@@ -174,8 +166,8 @@ static bool ws_client_open(ws_client_t *client) {
     return true;
 }
 
-static ws_client_t* ws_client_init(const char *server_ip, const uint16_t server_port) {
-    ws_client_t *client = malloc(sizeof(ws_client_t));
+struct ws_client* ws_client_init(const char *server_ip, const uint16_t server_port) {
+    struct ws_client *client = malloc(sizeof(struct ws_client));
 
     if (!client) {
         printf("Error allocating client context.\n");
@@ -190,17 +182,4 @@ static ws_client_t* ws_client_init(const char *server_ip, const uint16_t server_
 
     client->server_port = server_port;
     return client;
-}
-
-void run_ws_client_test(const char *server_ip, const uint16_t server_port) {
-    ws_client_t *client = ws_client_init(server_ip, server_port);
-    if (!client) {
-        return;
-    }
-
-    if (!ws_client_open(client)) {
-        printf("Error, could not open the TCP connection.\n");
-        ws_client_close(client);
-        return;
-    }
 }
