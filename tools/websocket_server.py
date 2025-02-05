@@ -16,6 +16,8 @@ async def handle_client(websocket, path=None):
     try:
         logger.info(f"New connection from {websocket.remote_address}")
 
+        await websocket.send(f"Hello from the server!")
+
         async for message in websocket:
             try:
                 logger.info(f"Received message: {message}")
