@@ -155,7 +155,7 @@ static void ws_parse_packet(const unsigned char* buffer, u16_t length) {
     }
 
     /* Payload length calculation */
-    uint32_t payload_length;
+    uint64_t payload_length;
     uint8_t payload_offset = 2;
 
     payload_length = buffer[1] & 0x7F;
@@ -166,10 +166,10 @@ static void ws_parse_packet(const unsigned char* buffer, u16_t length) {
         payload_offset += 2;
     }
     else if (payload_length == 127) {
-        payload_length = (buffer[2] << 24) & (buffer[3] << 16) & (buffer[4] << 8) & buffer[5];
-        payload_offset += 4;
+        payload_length = (buffer[2] << 56) & (buffer[3] << 48) & (buffer[4] << 40) & (buffer[5] << 32) & (buffer[6] << 24) & (buffer[7] << 16) & (buffer[8] << 8) & buffer[9];
+        payload_offset += 8;
     }
-    printf("Length of the payload: %d\n", payload_length);
+    printf("Length of the payload: %llu\n", payload_length);
 
     /* Op Code */
     printf("OP CODE:\n");
