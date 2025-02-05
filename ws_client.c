@@ -79,10 +79,21 @@ err_t ws_client_close(struct ws_client* client) {
 }
 
 static err_t ws_client_sent(void *arg, struct tcp_pcb *pcb, u16_t len) {
-    struct ws_client *client = (struct ws_client*)arg;
-    printf("Client sent: %u\n", len);
-
     return ERR_OK;
+}
+
+static bool ws_send_packet(struct ws_client *client) {
+    err_t err = tcp_write(client->pcb, client->send_buffer, client->send_buffer_len, TCP_WRITE_FLAG_COPY);
+    if (err != ERR_OK) {
+        printf("Failed to send packet: %d\n", err);
+        ws_client_close(client);
+        return false;
+    }
+    printf("Packet sent:\n");
+    printf("%.*s",client->send_buffer_len, client->send_buffer);
+    printf("\n");
+
+    return true;
 }
 
 static err_t ws_client_send_handshake(struct ws_client *client) {
@@ -100,16 +111,35 @@ static err_t ws_client_send_handshake(struct ws_client *client) {
                                     ipaddr_ntoa(&client->server_ip),
                                     client->server_port);
 
-    printf("Sent packet:\n");
-    printf("%s", client->send_buffer);
+    return ws_send_packet(client);
+}
 
-    err_t err = tcp_write(client->pcb, client->send_buffer, client->send_buffer_len, TCP_WRITE_FLAG_COPY);
-    if (err != ERR_OK) {
-        printf("Failed to write data %d\n", err);
-        ws_client_close(client);
-        return err;
+static void ws_write_mask(uint8_t *buffer) {
+    uint32_t mask = rand();
+    buffer[0] = (mask >> 24) & 0xFF;
+    buffer[1] = (mask >> 16) & 0xFF;
+    buffer[2] = (mask >> 8) & 0xFF;
+    buffer[3] = mask & 0xFF;
+}
+
+static void ws_build_packet(struct ws_client *client, enum ws_op_code op_code, const unsigned char *payload, uint64_t payload_length) {
+    /* Size is at least the 2-Byte header */
+    client->send_buffer_len = 2;
+
+    /* We add the FIN bit */
+    client->send_buffer[0] = op_code | 0x80;
+
+    /* We always add the masking bit because we are a client, see rfc6455 */
+    client->send_buffer[1] = payload_length | 0x80;
+
+    uint8_t mask_offset = client->send_buffer_len;
+    ws_write_mask(&client->send_buffer[mask_offset]);
+    client->send_buffer_len += 4;
+
+    /* Encode the payload with the mask */
+    for (uint64_t index = 0; index < payload_length; index++) {
+        client->send_buffer[client->send_buffer_len++] = payload[index] ^ client->send_buffer[mask_offset + (index%4)];
     }
-    return ERR_OK;
 }
 
 static err_t ws_client_connected(void *arg, struct tcp_pcb *pcb, err_t err) {
@@ -136,29 +166,25 @@ static void ws_client_err(void *arg, err_t err) {
     printf("Client error: %d\n", err);
 }
 
-static void ws_print_message(const unsigned char* buffer, uint32_t length) {
-    for (int index = 0; index < length; index++) {
+static void ws_print_buffer(const unsigned char* buffer, uint64_t length) {
+    for (uint64_t index = 0; index < length; index++) {
         printf("%c", buffer[index]);
     }
     printf("\n");
 }
 
-static void ws_parse_packet(const unsigned char* buffer, u16_t length) {
-    printf("Packet parser!\n");
-
-    /* Only messages sent by the client should be masked */
+static void ws_parse_packet(struct ws_client *client, const unsigned char* buffer, u16_t length) {
+    /* Only packets sent by the client should be masked */
     if (buffer[1] & 0x80) {
-        printf("Error: message coming from the server is masked!\n");
+        printf("Error: packet coming from the server is masked!\n");
     }
     if (buffer[0] & 0x70) {
         printf("Error: an extension must be managed!\n");
     }
 
     /* Payload length calculation */
-    uint64_t payload_length;
     uint8_t payload_offset = 2;
-
-    payload_length = buffer[1] & 0x7F;
+    uint64_t payload_length = buffer[1] & 0x7F;
 
     /* 126 and 127 indicate an extention of the payload length */
     if (payload_length == 126) {
@@ -166,61 +192,59 @@ static void ws_parse_packet(const unsigned char* buffer, u16_t length) {
         payload_offset += 2;
     }
     else if (payload_length == 127) {
-        payload_length = (buffer[2] << 56) & (buffer[3] << 48) & (buffer[4] << 40) & (buffer[5] << 32) & (buffer[6] << 24) & (buffer[7] << 16) & (buffer[8] << 8) & buffer[9];
+        payload_length = ((uint64_t)buffer[2] << 56) & ((uint64_t)buffer[3] << 48) & ((uint64_t)buffer[4] << 40) & ((uint64_t)buffer[5] << 32) & ((uint64_t)buffer[6] << 24) & ((uint64_t)buffer[7] << 16) & ((uint64_t)buffer[8] << 8) & buffer[9];
         payload_offset += 8;
     }
-    printf("Length of the payload: %llu\n", payload_length);
 
     /* Op Code */
-    printf("OP CODE:\n");
-
     switch (buffer[0] & 0x0F) {
         case OP_CODE_CONTINUATION:
-            printf("Continuation of a packet.\n");
+            printf("Packet received: Continuation.\n");
             break;
         case OP_CODE_TEXT:
-            ws_print_message(&buffer[payload_offset], payload_length);
+            printf("Packet received: Text.\n");
+            ws_print_buffer(&buffer[payload_offset], payload_length);
             break;
         case OP_CODE_BINARY:
-            printf("Binary.\n");
+            printf("Packet received: Binary.\n");
             break;
         case OP_CODE_CONNECTION_CLOSE:
-            printf("Connection closed.\n");
+            printf("Packet received: Connection closed.\n");
+            ws_print_buffer(&buffer[payload_offset], payload_length);
             break;
         case OP_CODE_PING:
-            printf("We received a ping.\n");
+            printf("Packet received: Ping.\n");
+            ws_build_packet(client, OP_CODE_PONG, &buffer[payload_offset], payload_length);
+            ws_send_packet(client);
             break;
         case OP_CODE_PONG:
-            printf("We received a pong.\n");
+            printf("Packet received: Pong.\n");
             break;
         default:
-            printf("Error: packet not managed.\n");
+            printf("Packet received: unknown.\n");
     }
     return;
 }
 
 err_t ws_client_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err) {
-    printf("Incoming packet.\r\n");
     struct ws_client *client = (struct ws_client*)arg;
     if (!p) {
-        printf("Connection closed by the server.\n");
+        printf("Empty packet received: connection closed by the server.\n");
         ws_client_close(client);
         return err;
     }
 
     if (client->state == WS_CONNECTED) {
         int index = 0;
-        printf("Total packet length: %d\n", p->tot_len);
-        printf("Segment length: %d\n", p->len);
         for (struct pbuf *q = p; q != NULL; q = q->next) {
-            ws_parse_packet((const unsigned char*)p->payload, p->len);
+            ws_parse_packet(client, (const unsigned char*)p->payload, p->len);
         }
     }
     else if (client->state == WS_HANDSHAKING) {
         char *upgrade_string = strstr(p->payload, "Upgrade: websocket");
         if (upgrade_string != NULL) {
             client->state = WS_CONNECTED;
-            printf("Handshake accepted.\n");
+            printf("Packet received: Handshake accepted.\n");
         }
     }
     else {
