@@ -52,34 +52,11 @@ struct ws_client {
     enum ws_state state;
 };
 
-err_t ws_client_close(struct ws_client* client) {
-    if (!client) {
-        printf("Client is already closed.\n");
-        return ERR_ARG;
+static void ws_print_buffer(const unsigned char* buffer, uint64_t length) {
+    for (uint64_t index = 0; index < length; index++) {
+        printf("%c", buffer[index]);
     }
-
-    if (client->pcb != NULL) {
-        tcp_arg(client->pcb, NULL);
-        tcp_poll(client->pcb, NULL, 0);
-        tcp_sent(client->pcb, NULL);
-        tcp_recv(client->pcb, NULL);
-        tcp_err(client->pcb, NULL);
-
-        err_t err = tcp_close(client->pcb);
-
-        if (err != ERR_OK) {
-            printf("Close failed with error code: %d, aborting.\n", err);
-            tcp_abort(client->pcb);
-            return err;
-        }
-        client->pcb = NULL;
-    }
-    free(client);
-    return ERR_OK;
-}
-
-static err_t ws_client_sent(void *arg, struct tcp_pcb *pcb, u16_t len) {
-    return ERR_OK;
+    printf("\n");
 }
 
 static bool ws_send_packet(struct ws_client *client) {
@@ -142,37 +119,6 @@ static void ws_build_packet(struct ws_client *client, enum ws_op_code op_code, c
     }
 }
 
-static err_t ws_client_connected(void *arg, struct tcp_pcb *pcb, err_t err) {
-    struct ws_client *client = (struct ws_client*)arg;
-    if (err != ERR_OK) {
-        printf("Connection failed %d\n", err);
-        ws_client_close(client);
-        return err;
-    }
-
-    ws_client_send_handshake(client);
-    printf("The connection is established. Sending WebSocket handshake.\n");
-    client->state = WS_HANDSHAKING;
-    return ERR_OK;
-}
-
-static err_t ws_client_poll(void *arg, struct tcp_pcb *pcb) {
-    return ERR_OK;
-}
-
-static void ws_client_err(void *arg, err_t err) {
-    struct ws_client *client = (struct ws_client*) arg;
-    ws_client_close(client);
-    printf("Client error: %d\n", err);
-}
-
-static void ws_print_buffer(const unsigned char* buffer, uint64_t length) {
-    for (uint64_t index = 0; index < length; index++) {
-        printf("%c", buffer[index]);
-    }
-    printf("\n");
-}
-
 static void ws_parse_packet(struct ws_client *client, const unsigned char* buffer, u16_t length) {
     /* Only packets sent by the client should be masked */
     if (buffer[1] & 0x80) {
@@ -226,6 +172,35 @@ static void ws_parse_packet(struct ws_client *client, const unsigned char* buffe
     return;
 }
 
+/* TCP callbacks */
+static err_t ws_client_sent(void *arg, struct tcp_pcb *pcb, u16_t len) {
+    return ERR_OK;
+}
+
+static err_t ws_client_connected(void *arg, struct tcp_pcb *pcb, err_t err) {
+    struct ws_client *client = (struct ws_client*)arg;
+    if (err != ERR_OK) {
+        printf("Connection failed %d\n", err);
+        ws_client_close(client);
+        return err;
+    }
+
+    ws_client_send_handshake(client);
+    printf("The connection is established. Sending WebSocket handshake.\n");
+    client->state = WS_HANDSHAKING;
+    return ERR_OK;
+}
+
+static err_t ws_client_poll(void *arg, struct tcp_pcb *pcb) {
+    return ERR_OK;
+}
+
+static void ws_client_err(void *arg, err_t err) {
+    struct ws_client *client = (struct ws_client*) arg;
+    ws_client_close(client);
+    printf("Client error: %d\n", err);
+}
+
 err_t ws_client_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err) {
     struct ws_client *client = (struct ws_client*)arg;
     if (!p) {
@@ -257,6 +232,25 @@ err_t ws_client_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err) 
     pbuf_free(p);
 
     return ERR_OK;
+}
+
+/* User functions */
+struct ws_client* ws_client_init(const char *server_ip, const uint16_t server_port) {
+    struct ws_client *client = malloc(sizeof(struct ws_client));
+
+    if (!client) {
+        printf("Error allocating client context.\n");
+        return NULL;
+    }
+    client->state = WS_DISCONNECTED;
+
+    if(!ip4addr_aton(server_ip, &client->server_ip)) {
+        printf("Server IP address is incorrect.\n");
+        return NULL;
+    }
+
+    client->server_port = server_port;
+    return client;
 }
 
 bool ws_client_open(struct ws_client *client) {
@@ -291,20 +285,28 @@ bool ws_client_open(struct ws_client *client) {
     return true;
 }
 
-struct ws_client* ws_client_init(const char *server_ip, const uint16_t server_port) {
-    struct ws_client *client = malloc(sizeof(struct ws_client));
-
+err_t ws_client_close(struct ws_client* client) {
     if (!client) {
-        printf("Error allocating client context.\n");
-        return NULL;
-    }
-    client->state = WS_DISCONNECTED;
-
-    if(!ip4addr_aton(server_ip, &client->server_ip)) {
-        printf("Server IP address is incorrect.\n");
-        return NULL;
+        printf("Client is already closed.\n");
+        return ERR_ARG;
     }
 
-    client->server_port = server_port;
-    return client;
+    if (client->pcb != NULL) {
+        tcp_arg(client->pcb, NULL);
+        tcp_poll(client->pcb, NULL, 0);
+        tcp_sent(client->pcb, NULL);
+        tcp_recv(client->pcb, NULL);
+        tcp_err(client->pcb, NULL);
+
+        err_t err = tcp_close(client->pcb);
+
+        if (err != ERR_OK) {
+            printf("Close failed with error code: %d, aborting.\n", err);
+            tcp_abort(client->pcb);
+            return err;
+        }
+        client->pcb = NULL;
+    }
+    free(client);
+    return ERR_OK;
 }
