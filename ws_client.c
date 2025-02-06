@@ -119,13 +119,15 @@ static void ws_build_packet(struct ws_client *client, enum ws_op_code op_code, c
     }
 }
 
-static void ws_parse_packet(struct ws_client *client, const unsigned char* buffer, u16_t length) {
+static bool ws_parse_packet(struct ws_client *client, const unsigned char* buffer, u16_t length) {
     /* Only packets sent by the client should be masked */
     if (buffer[1] & 0x80) {
         printf("Error: packet coming from the server is masked!\n");
+        return false;
     }
     if (buffer[0] & 0x70) {
         printf("Error: an extension must be managed!\n");
+        return false;
     }
 
     /* Payload length calculation */
@@ -169,7 +171,7 @@ static void ws_parse_packet(struct ws_client *client, const unsigned char* buffe
         default:
             printf("Packet received: unknown.\n");
     }
-    return;
+    return true;
 }
 
 /* TCP callbacks */
@@ -234,7 +236,7 @@ err_t ws_client_recv(void *arg, struct tcp_pcb *pcb, struct pbuf *p, err_t err) 
     return ERR_OK;
 }
 
-/* User functions */
+/* API functions */
 struct ws_client* ws_client_init(const char *server_ip, const uint16_t server_port) {
     struct ws_client *client = malloc(sizeof(struct ws_client));
 
@@ -242,24 +244,30 @@ struct ws_client* ws_client_init(const char *server_ip, const uint16_t server_po
         printf("Error allocating client context.\n");
         return NULL;
     }
-    client->state = WS_DISCONNECTED;
 
     if(!ip4addr_aton(server_ip, &client->server_ip)) {
         printf("Server IP address is incorrect.\n");
+        free(client);
         return NULL;
     }
 
+    client->state = WS_DISCONNECTED;
     client->server_port = server_port;
     return client;
 }
 
 bool ws_client_open(struct ws_client *client) {
+    if (!client) {
+        printf("Error: client not initialized.\n");
+        return false;
+    }
+
     printf("Connecting to server... \n");
     printf("IP: %s port: %u\n", ip4addr_ntoa(&client->server_ip), client->server_port);
 
     client->pcb = tcp_new_ip_type(IP_GET_TYPE(&client->server_ip));
     if (!client->pcb) {
-        printf("Failed to allocate new PCB.\n");
+        printf("Error: failed to allocate new PCB.\n");
         return false;
     }
 
@@ -285,10 +293,10 @@ bool ws_client_open(struct ws_client *client) {
     return true;
 }
 
-err_t ws_client_close(struct ws_client* client) {
+bool ws_client_close(struct ws_client* client) {
     if (!client) {
-        printf("Client is already closed.\n");
-        return ERR_ARG;
+        printf("Error: client is already closed.\n");
+        return false;
     }
 
     if (client->pcb != NULL) {
@@ -303,10 +311,9 @@ err_t ws_client_close(struct ws_client* client) {
         if (err != ERR_OK) {
             printf("Close failed with error code: %d, aborting.\n", err);
             tcp_abort(client->pcb);
-            return err;
+            return false;
         }
-        client->pcb = NULL;
     }
     free(client);
-    return ERR_OK;
+    return true;
 }
